@@ -72,6 +72,10 @@ You need a [seats.aero](https://seats.aero) Pro subscription for an API key. Pro
 
 To get the alerts, watch the repo with notifications for issues turned on.
 
+### Pausing to save money
+
+The subscription is only needed while the job is running. Award seats open about 331 days before departure, so the months that matter most are when your dates first open and the last couple of months before the trip. To pause, cancel the subscription and delete the `SEATS_AERO_API_KEY` secret: the daily job then skips quietly, and the saved history stays in the repo. Add the secret back to resume.
+
 ## Run it locally
 
 Requires Python 3.10 or newer. The watcher uses only the standard library.

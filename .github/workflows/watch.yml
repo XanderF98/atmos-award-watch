@@ -23,7 +23,13 @@ jobs:
         id: check
         env:
           SEATS_AERO_API_KEY: ${{ secrets.SEATS_AERO_API_KEY }}
-        run: python3 watcher.py --alert-file alert.md
+        run: |
+          if [ -z "$SEATS_AERO_API_KEY" ]; then
+            echo "No SEATS_AERO_API_KEY secret is set, so the check was skipped." >> "$GITHUB_STEP_SUMMARY"
+            echo "new_deals=0" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          python3 watcher.py --alert-file alert.md
 
       - name: Save results
         run: |
