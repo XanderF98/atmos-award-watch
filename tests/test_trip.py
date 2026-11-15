@@ -39,9 +39,10 @@ def test_pairs_skip_flights_without_enough_seats(rows, config):
 def test_pairs_use_backup_airport_only_when_it_saves_enough(rows, config):
     by_label = {t["label"]: t for t in snapshot_for(rows, config)["trips"]}
     assert by_label["Business out, economy back"]["out"]["origin"] == "YVR"  # 25k cheaper than Seattle
-    config["backup_airport_min_savings"] = 30000
-    by_label = {t["label"]: t for t in snapshot_for(rows, config)["trips"]}
-    assert by_label["Business out, economy back"]["out"]["origin"] == "SEA"
+    config["detours"]["YVR"]["min_savings"] = 30000
+    out = {t["label"]: t for t in snapshot_for(rows, config)["trips"]}["Business out, economy back"]["out"]
+    # Vancouver no longer saves enough, so the next best is Seattle to Dublin.
+    assert (out["origin"], out["destination"], out["detour"]) == ("SEA", "DUB", "Dublin")
 
 
 def test_covered_when_balance_is_enough(rows, config):
@@ -93,3 +94,21 @@ def test_dashboard_and_chart_render(rows, config):
     xml.dom.minidom.parseString(svg)  # must be well-formed
     assert "our balance 91k" in svg and "Business both ways &amp; more" in svg
     xml.dom.minidom.parseString(report.chart_svg({}, balance=None))
+
+
+def test_landing_comparison_shows_where_a_detour_pays_off(rows, config):
+    snapshot = snapshot_for(rows, config)
+    out, back = (w["landing"] for w in snapshot["watches"])
+    dublin = next(r for r in out if r["airport"] == "DUB")
+    assert dublin["cheapest"] == {"economy": 27500, "business": 55000}
+    assert dublin["compared"]["business"] == {"saves": 15000, "worth_it": True}
+    assert dublin["compared"]["economy"] == {"saves": 0, "worth_it": False}
+    london = next(r for r in out if r["airport"] == "LHR")
+    assert london["cheapest"] == {}  # only a seat with surcharges over the cap
+    assert out[0]["airport"] == "MXP" and not out[0]["detour"]  # Italy first
+    assert next(r for r in back if r["airport"] == "DUB")["compared"]["business"]["saves"] == 30000
+
+    page = report.dashboard_markdown(snapshot)
+    assert "Is it cheaper to land somewhere else in Europe?" in page
+    assert "business saves 15,000 (yes)" in page
+    assert "Nothing bookable yet at Rome (FCO)" in page

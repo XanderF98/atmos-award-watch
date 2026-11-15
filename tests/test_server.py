@@ -28,7 +28,7 @@ def saved_results(api, monkeypatch, tmp_path):
 def test_trip_options_report_the_shortfall(saved_results):
     result = server.get_trip_options()
     assert result["trips"][0]["points_short"] == 24000
-    assert set(result["dates_open_for_booking"]) == {"Seattle to Italy", "Italy to Seattle"}
+    assert set(result["dates_open_for_booking"]) == {"Seattle to Europe", "Europe to Seattle"}
 
 
 def test_current_deals_can_filter_by_cabin(saved_results):
@@ -40,7 +40,7 @@ def test_current_deals_can_filter_by_cabin(saved_results):
 
 def test_price_history_tracks_lowest_seen(saved_results):
     result = server.get_price_history("business")
-    assert result["series"]["Seattle to Italy / business"]["lowest_seen"] == 45000
+    assert result["series"]["Seattle to Europe / business"]["lowest_seen"] == 45000
 
 
 def test_live_search_validates_input_before_spending_a_call(saved_results):

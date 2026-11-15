@@ -22,7 +22,7 @@ def test_flatten_gives_one_option_per_available_cabin(rows):
 
 def test_watch_ignores_other_airports_and_dates(rows, config):
     options = alaska_options(rows, outbound(config))
-    assert all(o["destination"] in {"MXP", "LIN"} for o in options)
+    assert all(o["destination"] in outbound(config)["destinations"] for o in options)
     # SEA-LIN on Oct 20 is outside the Oct 1-16 window
     assert not any(o["date"] == "2027-10-20" for o in options)
 
@@ -47,7 +47,7 @@ def test_backup_airport_must_beat_main_airport_by_margin(rows, config):
     watch = outbound(config)
     found = deals.find_deals(alaska_options(rows, watch), watch, config)
     by_origin = {d["origin"]: d for d in found if d["cabin"] == "business"}
-    assert by_origin["YVR"]["miles"] == 45000 and by_origin["YVR"]["backup_airport"]  # 25k cheaper
+    assert by_origin["YVR"]["miles"] == 45000 and by_origin["YVR"]["detour"] == "Vancouver"  # 25k cheaper
     assert "PDX" not in by_origin  # only 10k cheaper than Seattle
 
 
@@ -56,6 +56,44 @@ def test_backup_airport_counts_when_main_airport_has_nothing(rows, config):
     options = [o for o in alaska_options(rows, watch) if o["origin"] != "SEA"]
     found = deals.find_deals(options, watch, config)
     assert {d["origin"] for d in found} == {"YVR", "PDX"}
+
+
+def test_european_gateway_counts_only_when_it_saves_enough(rows, config):
+    watch = outbound(config)
+    found = deals.find_deals(alaska_options(rows, watch), watch, config)
+    dublin = {d["cabin"]: d for d in found if d["destination"] == "DUB"}
+    # Business to Dublin is 55k against 70k to Milan: 15k saved beats the 10k bar.
+    assert dublin["business"]["detour"] == "Dublin" and "flight" in dublin["business"]["connection"]
+    # Economy to Dublin costs the same as Milan, so the extra hop isn't worth it.
+    assert "economy" not in dublin
+
+
+def test_surcharges_rule_out_a_gateway(rows, config):
+    watch = outbound(config)
+    found = deals.find_deals(alaska_options(rows, watch), watch, config)
+    assert not any(d["destination"] == "LHR" for d in found)  # $980 in taxes is over the $350 cap
+
+
+def test_two_detours_must_save_both_amounts():
+    watch = {"origins": ["SEA", "YVR"], "destinations": ["MXP", "DUB"]}
+    settings = {
+        "max_miles": {"business": 70000},
+        "detours": {"YVR": {"name": "Vancouver", "min_savings": 20000}, "DUB": {"name": "Dublin", "min_savings": 10000}},
+    }
+
+    def option(origin, destination, miles):
+        return {"origin": origin, "destination": destination, "cabin": "business", "miles": miles,
+                "date": "2027-10-02", "seats": 2, "taxes": 50, "taxes_currency": "USD"}
+
+    main = option("SEA", "MXP", 70000)
+    assert deals.prefer_main_airports([main, option("YVR", "DUB", 40000)], watch, settings)[-1]["detour"] == "Vancouver and Dublin"
+    assert len(deals.prefer_main_airports([main, option("YVR", "DUB", 40001)], watch, settings)) == 1
+
+
+def test_old_backup_airport_settings_still_work():
+    watch = {"backup_airports": ["PDX"]}
+    detours = deals.detours_for(watch, {"backup_airport_min_savings": 15000})
+    assert detours == {"PDX": {"name": "PDX", "min_savings": 15000}}
 
 
 def test_unknown_seat_count_is_not_disqualifying(rows, config):
@@ -69,7 +107,7 @@ def test_alerts_only_for_new_or_cheaper_deals(rows, config):
     found = deals.find_deals(alaska_options(rows, watch), watch, config)
 
     new, record = deals.split_new(found, {})
-    assert len(new) == len(found) == 4
+    assert len(new) == len(found) == 5
 
     new, record = deals.split_new(found, record)
     assert new == []  # same deals the next day: no repeat alert
@@ -80,7 +118,7 @@ def test_alerts_only_for_new_or_cheaper_deals(rows, config):
 
     new, record = deals.split_new(found[:1], record)
     new, _ = deals.split_new(found, record)
-    assert len(new) == 3  # deals that vanished and came back alert again
+    assert len(new) == len(found) - 1  # deals that vanished and came back alert again
 
 
 def test_cabin_summary(rows, config):

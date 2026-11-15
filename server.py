@@ -110,7 +110,7 @@ def airports(value: str) -> list[str] | None:
 
 @mcp.tool()
 def get_watchlist() -> dict:
-    """The routes and dates being watched every day, and the rules that decide what counts as a deal (points limit per cabin, number of travelers, taxes cap, backup airports)."""
+    """The routes and dates being watched every day, and the rules that decide what counts as a deal (points limit per cabin, number of travelers, taxes cap, and detour airports with the savings each must beat, such as Vancouver or Dublin)."""
     return load_watchlist()
 
 
@@ -136,7 +136,7 @@ def get_current_deals(cabin: str | None = None) -> dict:
 
 @mcp.tool()
 def get_trip_options() -> dict:
-    """Whether the whole trip can be booked: the cheapest way out paired with a way back for each cabin combination, total points for all travelers, and how far short of (or under) the points balance each is. Also says which travel dates have opened for booking yet and whether the data source is returning anything for each route. Free to call; use this for 'can we afford the trip?' or 'how many more points do we need?'."""
+    """Whether the whole trip can be booked: the cheapest way out paired with a way back for each cabin combination, total points for all travelers, and how far short of (or under) the points balance each is. Also compares landing in Italy with landing elsewhere in Europe (Dublin, London, Paris and so on) and connecting on your own, says which travel dates have opened for booking yet, and whether the data source is returning anything for each route. Free to call; use this for 'can we afford the trip?', 'how many more points do we need?' or 'is it cheaper to fly into Dublin?'."""
     text = read_data("latest.json")
     if not text:
         return {"error": "No results yet. The daily check has not run."}
@@ -147,6 +147,7 @@ def get_trip_options() -> dict:
         "trips": snapshot.get("trips", []),
         "dates_open_for_booking": {w["name"]: w["release"] for w in snapshot["watches"]},
         "route_coverage_days_of_data": {w["name"]: w["coverage"] for w in snapshot["watches"]},
+        "where_to_land": {w["name"]: w["landing"] for w in snapshot["watches"] if w.get("landing")},
     }
 
 

@@ -3,8 +3,8 @@
   "passengers": 2,
   "points_balance": 91000,
   "trip": {
-    "outbound": "Seattle to Italy",
-    "return": "Italy to Seattle",
+    "outbound": "Seattle to Europe",
+    "return": "Europe to Seattle",
     "min_nights": 8,
     "max_nights": 12
   },
@@ -15,21 +15,55 @@
     "economy": 37500
   },
   "max_taxes_usd": 350,
-  "backup_airport_min_savings": 20000,
+  "detours": {
+    "YVR": {
+      "name": "Vancouver",
+      "min_savings": 20000,
+      "connection": "about 3 hours by car or train from Seattle"
+    },
+    "PDX": {
+      "name": "Portland",
+      "min_savings": 20000,
+      "connection": "about 3.5 hours by train or car from Seattle"
+    },
+    "DUB": {
+      "name": "Dublin",
+      "min_savings": 10000,
+      "connection": "a 2.5 to 3 hour flight to or from Italy"
+    },
+    "LHR": {
+      "name": "London",
+      "min_savings": 10000,
+      "connection": "a 2 to 2.5 hour flight to or from Italy"
+    },
+    "CDG": {
+      "name": "Paris",
+      "min_savings": 10000,
+      "connection": "a 2 hour flight to or from Italy, or 7 hours by train from Milan"
+    },
+    "HEL": {
+      "name": "Helsinki",
+      "min_savings": 10000,
+      "connection": "a 3 hour flight to or from Italy"
+    },
+    "KEF": {
+      "name": "Reykjavik",
+      "min_savings": 15000,
+      "connection": "a 4 hour flight to or from Italy"
+    }
+  },
   "watches": [
     {
-      "name": "Seattle to Italy",
+      "name": "Seattle to Europe",
       "origins": ["SEA", "YVR", "PDX"],
-      "destinations": ["MXP", "LIN", "FCO"],
-      "backup_airports": ["YVR", "PDX"],
+      "destinations": ["FCO", "MXP", "LIN", "DUB", "LHR", "CDG", "HEL", "KEF"],
       "start_date": "2027-10-01",
       "end_date": "2027-10-16"
     },
     {
-      "name": "Italy to Seattle",
-      "origins": ["NAP", "FCO"],
+      "name": "Europe to Seattle",
+      "origins": ["FCO", "NAP", "MXP", "DUB", "LHR", "CDG", "HEL", "KEF"],
       "destinations": ["SEA", "YVR", "PDX"],
-      "backup_airports": ["YVR", "PDX"],
       "start_date": "2027-10-10",
       "end_date": "2027-10-28"
     }

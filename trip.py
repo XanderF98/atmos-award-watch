@@ -3,19 +3,16 @@
   pair_trips        can we get there AND back, and do we have the points?
   release_calendar  which of our dates can be booked yet?
   route_coverage    is the data source returning anything for each airport pair?
+  landing_options   is it cheaper to land somewhere else in Europe and connect?
 
 Pure functions, like deals.py: no network and no files.
 """
 
 from datetime import date, timedelta
 
-from deals import CABIN_ORDER
+from deals import CABIN_ORDER, bookable, detours_for
 
 RELEASE_WINDOW_DAYS = 331  # Atmos Rewards opens award seats about this far ahead
-
-
-def _bookable(option: dict, passengers: int) -> bool:
-    return option["seats"] is None or option["seats"] >= passengers
 
 
 def pair_trips(outbound: list[dict], inbound: list[dict], settings: dict) -> list[dict]:
@@ -30,8 +27,8 @@ def pair_trips(outbound: list[dict], inbound: list[dict], settings: dict) -> lis
     passengers = settings.get("passengers", 1)
     balance = settings.get("points_balance")
 
-    outs = [o for o in outbound if _bookable(o, passengers)]
-    backs = [o for o in inbound if _bookable(o, passengers)]
+    outs = [o for o in outbound if bookable(o, settings)]
+    backs = [o for o in inbound if bookable(o, settings)]
 
     best: dict[tuple[str, str], dict] = {}
     for out in outs:
@@ -55,11 +52,11 @@ def pair_trips(outbound: list[dict], inbound: list[dict], settings: dict) -> lis
             else f"{out_cabin.title()} out, {back_cabin} back"
         )
         taxes = [leg["taxes"] for leg in (out, back)]
-        legs = ("id", "origin", "destination", "date", "cabin", "miles", "nonstop", "airlines")
+        legs = ("id", "origin", "destination", "date", "cabin", "miles", "nonstop", "airlines", "detour", "connection")
         entry = {
             "label": label,
-            "out": {k: out[k] for k in legs},
-            "back": {k: back[k] for k in legs},
+            "out": {k: out.get(k) for k in legs},
+            "back": {k: back.get(k) for k in legs},
             "nights": found["nights"],
             "passengers": passengers,
             "total_points": found["total"],
@@ -106,3 +103,60 @@ def route_coverage(rows: list[dict], watch: dict) -> dict[str, int]:
         if pair in counts:
             counts[pair] += 1
     return counts
+
+
+AIRPORT_NAMES = {
+    "SEA": "Seattle", "YVR": "Vancouver", "PDX": "Portland",
+    "FCO": "Rome", "MXP": "Milan Malpensa", "LIN": "Milan Linate", "NAP": "Naples",
+    "VCE": "Venice", "FLR": "Florence", "BLQ": "Bologna", "PSA": "Pisa",
+    "DUB": "Dublin", "LHR": "London", "KEF": "Reykjavik", "HEL": "Helsinki",
+    "FRA": "Frankfurt", "CDG": "Paris", "AMS": "Amsterdam", "MAD": "Madrid",
+}
+
+
+def landing_options(options: list[dict], watch: dict, settings: dict, side: str) -> list[dict]:
+    """For each airport on the far side of a watch, the cheapest price per cabin.
+
+    side is "destination" for the way out (where you land) and "origin" for the
+    way back (where you leave from). Only flights from the main home airport
+    count, so the comparison is about the European end, and only flights with
+    enough seats and taxes under the cap. Each detour airport is compared with
+    the cheapest main airport in the same cabin.
+    """
+    detours = detours_for(watch, settings)
+    near = "origin" if side == "destination" else "destination"
+    far_airports = watch["destinations"] if side == "destination" else watch["origins"]
+    usable = [o for o in options if bookable(o, settings)]
+    from_home = [o for o in usable if o[near] not in detours] or usable
+
+    cheapest: dict[str, dict[str, int]] = {code: {} for code in far_airports}
+    for option in from_home:
+        prices = cheapest.get(option[side])
+        if prices is not None:
+            prices[option["cabin"]] = min(option["miles"], prices.get(option["cabin"], option["miles"]))
+
+    best_main: dict[str, int] = {}
+    for code, prices in cheapest.items():
+        if code not in detours:
+            for cabin, miles in prices.items():
+                best_main[cabin] = min(miles, best_main.get(cabin, miles))
+
+    rows = []
+    for code in far_airports:
+        detour = detours.get(code)
+        row = {
+            "airport": code,
+            "name": (detour or {}).get("name") or AIRPORT_NAMES.get(code, code),
+            "detour": detour is not None,
+            "connection": (detour or {}).get("connection"),
+            "cheapest": cheapest[code],
+            "compared": {},
+        }
+        if detour:
+            for cabin, miles in cheapest[code].items():
+                if cabin in best_main:
+                    saves = best_main[cabin] - miles
+                    row["compared"][cabin] = {"saves": saves, "worth_it": saves >= detour["min_savings"]}
+        rows.append(row)
+    rows.sort(key=lambda r: (r["detour"], not r["cheapest"]))  # main airports first, empty rows last
+    return rows

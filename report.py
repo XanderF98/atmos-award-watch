@@ -12,7 +12,10 @@ def _d(day: str) -> str:
 
 def _leg(leg: dict) -> str:
     stops = "nonstop" if leg["nonstop"] else "connecting"
-    return f"{_d(leg['date'])} {leg['origin']}-{leg['destination']} ({leg['cabin']}, {leg['miles']:,}, {stops})"
+    text = f"{_d(leg['date'])} {leg['origin']}-{leg['destination']} ({leg['cabin']}, {leg['miles']:,}, {stops})"
+    if leg.get("detour"):
+        text += f", via {leg['detour']}"
+    return text
 
 
 def trips_table(trips: list[dict]) -> list[str]:
@@ -36,6 +39,39 @@ def trips_table(trips: list[dict]) -> list[str]:
             f"| {trip['label']} | {_leg(trip['out'])} | {_leg(trip['back'])} | {trip['nights']} "
             f"| {trip['total_points']:,} | {taxes} | {verdict} |"
         )
+    return lines
+
+
+def landing_table(name: str, rows: list[dict]) -> list[str]:
+    """One watch's airports side by side: Italy first, then the detours."""
+    cabins = [c for c in ("economy", "premium", "business", "first") if any(c in r["cheapest"] for r in rows)]
+    if not cabins:
+        return [f"**{name}:** no award space at any of these airports yet."]
+    lines = [
+        f"**{name}**",
+        "",
+        "| Airport | Connection | " + " | ".join(c.title() for c in cabins) + " | Worth the detour? |",
+        "|---|---|" + "---|" * len(cabins) + "---|",
+    ]
+    empty = [f"{row['name']} ({row['airport']})" for row in rows if not row["cheapest"]]
+    for row in (r for r in rows if r["cheapest"]):
+        prices = [f"{row['cheapest'][c]:,}" if c in row["cheapest"] else "-" for c in cabins]
+        if not row["detour"]:
+            how, verdict = "Already there", ""
+        else:
+            how = row["connection"] or "Your own connection"
+            parts = []
+            for cabin in cabins:
+                compared = row["compared"].get(cabin)
+                if not compared:
+                    continue
+                saves = compared["saves"]
+                amount = f"saves {saves:,}" if saves > 0 else ("same price" if saves == 0 else f"costs {-saves:,} more")
+                parts.append(f"{cabin} {amount}{' (yes)' if compared['worth_it'] else ''}")
+            verdict = "; ".join(parts) if parts else ("no Italy price to compare" if row["cheapest"] else "")
+        lines.append(f"| {row['name']} ({row['airport']}) | {how} | " + " | ".join(prices) + f" | {verdict} |")
+    if empty:
+        lines += ["", f"Nothing bookable yet at {', '.join(empty)}."]
     return lines
 
 
@@ -79,6 +115,18 @@ def dashboard_markdown(snapshot: dict, chart_file: str | None = "chart.svg") -> 
     ]
     if chart_file:
         lines += [f"![Cheapest round trip over time]({chart_file})", ""]
+    landing = [w for w in snapshot["watches"] if w.get("landing")]
+    if landing:
+        lines += ["## Is it cheaper to land somewhere else in Europe?", ""]
+        for watch in landing:
+            lines += landing_table(watch["name"], watch["landing"]) + [""]
+        lines += [
+            "Points are per person, one way, to or from Seattle, counting only flights with seats "
+            "for everyone and taxes under the cap. A detour gets a yes only when it saves at least "
+            "the amount set for it in the watchlist, because the hop to Italy is booked separately "
+            "and costs time and cash.",
+            "",
+        ]
     lines += ["## Which dates can be booked yet?", ""]
     lines += [release_line(w["name"], w["release"]) for w in snapshot["watches"]]
     lines += ["", "## Is the data source covering our routes?", ""]

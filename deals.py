@@ -68,61 +68,90 @@ def sort_options(options: list[dict]) -> list[dict]:
     )
 
 
+def bookable(option: dict, settings: dict) -> bool:
+    """Enough seats for everyone and taxes under the cap, whatever the points price.
+
+    Unknown seat counts and taxes (or taxes in another currency) don't disqualify.
+    """
+    if option["seats"] is not None and option["seats"] < settings.get("passengers", 1):
+        return False
+    max_taxes = settings.get("max_taxes_usd")
+    in_dollars = (option["taxes_currency"] or "USD") == "USD"
+    if max_taxes is not None and option["taxes"] is not None and in_dollars and option["taxes"] > max_taxes:
+        return False
+    return True
+
+
 def find_deals(options: list[dict], watch: dict, settings: dict) -> list[dict]:
     """Apply the watchlist rules. An option is a deal when:
 
     1. its points price is at or under the limit for its cabin,
     2. it has enough seats for everyone (when the seat count is known),
     3. its taxes are under the cap (when known and in US dollars), and
-    4. if it uses a backup airport, it beats the best main-airport deal in the
-       same cabin by the configured margin, or there is no such deal.
+    4. if it uses a detour airport (see detours_for), it beats the best option
+       without one in the same cabin by that detour's min_savings, or there is
+       no such option.
     """
     limits = settings.get("max_miles", {})
-    passengers = settings.get("passengers", 1)
-    max_taxes = settings.get("max_taxes_usd")
 
     def passes(option: dict) -> bool:
         limit = limits.get(option["cabin"])
-        if limit is None or option["miles"] > limit:
-            return False
-        if option["seats"] is not None and option["seats"] < passengers:
-            return False
-        in_dollars = (option["taxes_currency"] or "USD") == "USD"
-        if max_taxes is not None and option["taxes"] is not None and in_dollars:
-            if option["taxes"] > max_taxes:
-                return False
-        return True
+        return limit is not None and option["miles"] <= limit and bookable(option, settings)
 
     good = [o for o in options if passes(o)]
     return sort_options(prefer_main_airports(good, watch, settings))
 
 
-def prefer_main_airports(options: list[dict], watch: dict, settings: dict) -> list[dict]:
-    """Drop backup-airport options that don't earn the extra travel.
+def detours_for(watch: dict, settings: dict) -> dict[str, dict]:
+    """Airports that are a detour from the plan, each with the points it must save.
 
-    A backup-airport option stays only if no main-airport option exists in the
-    same cabin, or it is cheaper than the best one by the configured margin.
-    Kept backup options are marked with backup_airport=True.
+    A detour is any airport you'd rather not use unless it pays off: a backup
+    airport near home (Vancouver instead of Seattle) or a European city you'd
+    connect through on your own (Dublin, then a short flight to Italy).
+    Older watchlists with backup_airports and backup_airport_min_savings still work.
     """
-    margin = settings.get("backup_airport_min_savings", 0)
-    backups = set(watch.get("backup_airports") or [])
+    found = {code: dict(info) for code, info in (settings.get("detours") or {}).items()}
+    legacy_margin = settings.get("backup_airport_min_savings", 0)
+    for code in watch.get("backup_airports") or []:
+        found.setdefault(code, {"name": code, "min_savings": legacy_margin})
+    for code, info in found.items():
+        info.setdefault("name", code)
+        info.setdefault("min_savings", 0)
+    return found
 
-    def is_backup(option: dict) -> bool:
-        return option["origin"] in backups or option["destination"] in backups
+
+def prefer_main_airports(options: list[dict], watch: dict, settings: dict) -> list[dict]:
+    """Drop detour options that don't save enough to be worth it.
+
+    A detour option stays only if no option without a detour exists in the same
+    cabin, or it is cheaper than the best one by the detour's min_savings (added
+    up when a flight uses two detours, like Vancouver to Dublin). Kept options
+    are marked with the detour's name and how you'd get there.
+    """
+    detours = detours_for(watch, settings)
+
+    def used(option: dict) -> list[dict]:
+        return [detours[code] for code in (option["origin"], option["destination"]) if code in detours]
 
     best_main: dict[str, int] = {}
     for option in options:
-        if not is_backup(option):
+        if not used(option):
             cabin = option["cabin"]
             best_main[cabin] = min(option["miles"], best_main.get(cabin, option["miles"]))
 
     kept = []
     for option in options:
-        if is_backup(option):
+        via = used(option)
+        if via:
             main = best_main.get(option["cabin"])
-            if main is not None and main - option["miles"] < margin:
-                continue  # not enough cheaper to be worth leaving the main airport
-            option = {**option, "backup_airport": True}
+            needed = sum(d["min_savings"] for d in via)
+            if main is not None and main - option["miles"] < needed:
+                continue  # not enough cheaper to be worth the detour
+            option = {
+                **option,
+                "detour": " and ".join(d["name"] for d in via),
+                "connection": "; ".join(d["connection"] for d in via if d.get("connection")) or None,
+            }
         kept.append(option)
     return kept
 
@@ -210,8 +239,8 @@ def _money(option: dict) -> str:
 
 def _row(option: dict) -> str:
     route = f"{option['origin']} to {option['destination']}"
-    if option.get("backup_airport"):
-        route += " (backup airport)"
+    if option.get("detour"):
+        route += f" (via {option['detour']})"
     return (
         f"| {option['cabin'].title()} | {option['date']} | {route} | {option['miles']:,} "
         f"| {_money(option)} | {option['seats'] or '?'} | {'yes' if option['nonstop'] else 'no'} "
@@ -238,6 +267,9 @@ def alert_markdown(new_by_watch: dict[str, list[dict]], settings: dict, details:
             continue
         lines += [f"## {watch_name}", "", TABLE_HEAD]
         lines += [_row(d) for d in deals[:15]]
+        notes = sorted({(d["detour"], d["connection"]) for d in deals[:15] if d.get("detour") and d.get("connection")})
+        for name, connection in notes:
+            lines.append(f"\nVia {name}: {connection}. That part is booked separately.")
         if len(deals) > 15:
             lines.append(f"\n{len(deals) - 15} more in `data/latest.json`.")
         for deal in deals:

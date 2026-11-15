@@ -4,6 +4,7 @@ For every watch in watchlist.json this:
   1. asks seats.aero for cached award space (one API call per watch),
   2. applies the deal rules in deals.py,
   3. pairs ways out with ways back and prices the whole trip (trip.py),
+     and compares landing in Italy with landing elsewhere in Europe,
   4. saves a snapshot, price history, a dashboard page and a chart,
   5. writes an alert file when a deal is new or its price dropped.
 
@@ -66,13 +67,14 @@ def check(config: dict, search=seats_aero.search, today: date | None = None) -> 
         "watches": [],
         "trips": [],
     }
-    options_by_watch = {}
+    options_by_watch, all_options = {}, {}
     for watch in config["watches"]:
         rows = search(
             watch["origins"], watch["destinations"], watch["start_date"], watch["end_date"],
             program=program,
         )
         options = deals.options_for_watch(rows, watch)
+        all_options[watch["name"]] = options
         options_by_watch[watch["name"]] = deals.prefer_main_airports(options, watch, config)
         snapshot["watches"].append(
             {
@@ -89,6 +91,13 @@ def check(config: dict, search=seats_aero.search, today: date | None = None) -> 
     pair = trip_watches(config)
     if pair:
         snapshot["trips"] = trip.pair_trips(options_by_watch[pair[0]], options_by_watch[pair[1]], config)
+        watches = {w["name"]: w for w in config["watches"]}
+        for entry in snapshot["watches"]:
+            if entry["name"] in pair:
+                side = "destination" if entry["name"] == pair[0] else "origin"
+                entry["landing"] = trip.landing_options(
+                    all_options[entry["name"]], watches[entry["name"]], config, side
+                )
     return snapshot
 
 

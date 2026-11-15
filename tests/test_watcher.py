@@ -18,8 +18,8 @@ def run(monkeypatch, tmp_path):
 
 def test_client_sends_key_follows_pages_and_filters_program(api):
     rows = seats_aero.search(["SEA", "YVR", "PDX"], ["MXP", "LIN"], "2027-10-01", "2027-10-16")
-    assert len(rows) == 9  # 10 in the fixture, one from another program
-    assert len(api.calls) == 3  # 10 rows at 4 per page
+    assert len(rows) == 12  # 13 in the fixture, one from another program
+    assert len(api.calls) == 4  # 13 rows at 4 per page
     assert "sources=alaska" in api.calls[0] and "origin_airport=SEA%2CYVR%2CPDX" in api.calls[0]
 
 
@@ -41,11 +41,12 @@ def test_full_run_saves_results_and_alerts_once(api, monkeypatch, tmp_path):
 
     assert run(monkeypatch, tmp_path) == 0
     snapshot = json.loads((tmp_path / "latest.json").read_text())
-    assert [len(w["deals"]) for w in snapshot["watches"]] == [4, 3]
+    assert [len(w["deals"]) for w in snapshot["watches"]] == [5, 4]
     alert = (tmp_path / "alert.md").read_text()
-    assert "YVR to MXP (backup airport)" in alert and "flights AA 2401, AA 198" in alert
+    assert "YVR to MXP (via Vancouver)" in alert and "flights AA 2401, AA 198" in alert
+    assert "Via Dublin: a 2.5 to 3 hour flight to or from Italy. That part is booked separately." in alert
     assert alert.startswith("## The whole trip right now") and "24,000 short" in alert
-    assert "new_deals=7" in output.read_text()
+    assert "new_deals=9" in output.read_text()
     assert "business YVR-MXP for 45,000 points" in output.read_text()  # headline, not just first class
     assert "24,000 short" in (tmp_path / "README.md").read_text()
     assert (tmp_path / "chart.svg").read_text().startswith("<svg")
@@ -59,7 +60,7 @@ def test_full_run_saves_results_and_alerts_once(api, monkeypatch, tmp_path):
     with (tmp_path / "history.csv").open() as handle:
         history = list(csv.DictReader(handle))
     assert len(history) == 6  # 2 cabins outbound + 4 cabins return, once
-    assert {"watch": "Seattle to Italy", "cabin": "business", "cheapest_miles": "45000"}.items() <= history[0].items()
+    assert {"watch": "Seattle to Europe", "cabin": "business", "cheapest_miles": "45000"}.items() <= history[0].items()
 
 
 def test_run_fails_loudly_when_the_api_rejects_the_key(api, monkeypatch, tmp_path, capsys):
