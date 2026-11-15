@@ -56,11 +56,11 @@ def test_release_calendar_counts_dates_inside_the_booking_window(config):
     watch = config["watches"][1]  # Oct 10 to Oct 28, 2027
     release = trip.release_calendar(watch, date(2026, 11, 15))
     assert release == {
-        "dates_total": 19, "dates_open": 3, "open_through": "2027-10-12",
-        "next_date": "2027-10-13", "next_opens_on": "2026-11-16", "all_open_on": "2026-12-01",
+        "dates_total": 19, "dates_open": 2, "open_through": "2027-10-11",
+        "next_date": "2027-10-12", "next_opens_on": "2026-11-16", "all_open_on": "2026-12-02",
     }
     assert trip.release_calendar(watch, date(2026, 10, 1))["dates_open"] == 0
-    done = trip.release_calendar(watch, date(2026, 12, 1))
+    done = trip.release_calendar(watch, date(2026, 12, 2))
     assert done["dates_open"] == 19 and done["next_opens_on"] is None
 
 
@@ -81,7 +81,7 @@ def test_dashboard_and_chart_render(rows, config):
     snapshot = snapshot_for(rows, config)
     page = report.dashboard_markdown(snapshot)
     assert "24,000 short" in page
-    assert "3 of 19 dates can be booked (through Oct 12)" in page
+    assert "2 of 19 dates can be booked (through Oct 11)" in page
     assert "Nothing returned for SEA-FCO" in page
     assert "seats.aero" in page  # the data source must be credited
 

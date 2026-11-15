@@ -12,7 +12,7 @@ from datetime import date, timedelta
 
 from deals import CABIN_ORDER, bookable, detours_for
 
-RELEASE_WINDOW_DAYS = 331  # Atmos Rewards opens award seats about this far ahead
+RELEASE_WINDOW_DAYS = 330  # alaskaair.com: "Cannot book flights more than 330 days in the future"
 
 
 def pair_trips(outbound: list[dict], inbound: list[dict], settings: dict) -> list[dict]:

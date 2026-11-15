@@ -17,7 +17,7 @@ So the watcher pairs every way out with a way back, prices the whole trip for tw
 ## What a daily run tells me
 
 - **Whether the trip is bookable.** The cheapest pairing for each cabin mix (economy both ways, business out and economy back, and so on), total points for two, and how far that is from our balance.
-- **Which dates exist yet.** Atmos opens award seats about 331 days ahead, so for weeks some of our dates simply can't be booked. The run says which are open and when the rest will be, so "no seats" is never confused with "not released".
+- **Which dates exist yet.** Alaska opens award seats 330 days ahead, so for weeks some of our dates simply can't be booked. The run says which are open and when the rest will be, so "no seats" is never confused with "not released".
 - **Whether the data covers our routes.** The data source mostly tracks airport pairs that have a nonstop flight. If a route returns nothing, the run says so instead of staying quiet forever.
 - **Whether landing somewhere else is cheaper.** Rome and Milan side by side with Dublin, London, Paris, Helsinki and Reykjavik, and whether the saving beats the hassle of a separate hop to Italy.
 - **One-way deals.** Seats at or under my points limit per cabin, with enough seats for both of us.
