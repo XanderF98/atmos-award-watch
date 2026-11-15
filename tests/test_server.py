@@ -8,13 +8,15 @@ pytest.importorskip("mcp")
 
 import server  # noqa: E402
 import watcher  # noqa: E402
+from conftest import CONFIG_PATH  # noqa: E402
 
 
 @pytest.fixture()
 def saved_results(api, monkeypatch, tmp_path):
     """Run the watcher once against the stub API and point the server at the results."""
     monkeypatch.setattr(
-        sys, "argv", ["watcher.py", "--data-dir", str(tmp_path / "data"), "--alert-file", str(tmp_path / "a.md")]
+        sys, "argv",
+        ["watcher.py", "--config", str(CONFIG_PATH), "--data-dir", str(tmp_path / "data"), "--alert-file", str(tmp_path / "a.md")],
     )
     assert watcher.main() == 0
     for name in ("latest.json", "history.csv"):

@@ -71,6 +71,8 @@ Each gateway is a detour in `watchlist.json`, with the saving it has to beat and
 "DUB": {"name": "Dublin", "min_savings": 10000, "connection": "a 2.5 to 3 hour flight to or from Italy"}
 ```
 
+Which cities are worth watching depends on what the data source covers. On November 15, 2026, seats.aero tracked Seattle to and from Rome, Dublin, London, Paris, Helsinki and Reykjavik for Atmos, but not Milan or Naples. That makes Rome the only Italian airport the watcher can see. Our trip starts at Lake Como, so landing in Rome means a 3 hour train north, which makes Dublin, London and Paris look even better. Vancouver and Portland are only tracked to London and Reykjavik.
+
 I set the bar at 10,000 points because a budget flight to Milan plus half a day costs about that much to me. That means a business-class saving clears it and an economy saving doesn't. Frankfurt is left out because it is just over 5,000 miles from Seattle, so it costs the same as Italy.
 
 ## MCP tools
@@ -129,7 +131,7 @@ In Copilot Studio, add the server as a Model Context Protocol tool with API key 
 ## Limitations
 
 - **Not yet proven on live data.** Everything is tested against a stand-in built from the published API spec. The first real runs will show what differs. I expect taxes (which I treat as cents) and route coverage to be the surprises.
-- **Coverage is not guaranteed.** Routes without a nonstop flight may not be tracked at all. `--check-routes` exists because of this.
+- **Coverage is not guaranteed.** Routes without a nonstop flight may not be tracked at all, which is why Milan and Naples aren't in the watchlist. `--check-routes` and the coverage section of the dashboard exist because of this.
 - **Cached data.** Results can be hours old, so a seat can be gone by the time I look. The airline's site is the final word.
 - **The hop to Italy is my own problem.** The watcher prices the long flight. The short flight or train is booked separately, so a late arrival isn't protected. I'd leave a night in the gateway city.
 - **October is the end of the season.** Several Seattle nonstops are seasonal. Alaska's Rome flights ran through October 23 in 2026, so late-October return dates may not have a nonstop.

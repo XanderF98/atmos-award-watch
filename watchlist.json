@@ -56,13 +56,13 @@
     {
       "name": "Seattle to Europe",
       "origins": ["SEA", "YVR", "PDX"],
-      "destinations": ["FCO", "MXP", "LIN", "DUB", "LHR", "CDG", "HEL", "KEF"],
+      "destinations": ["FCO", "DUB", "LHR", "CDG", "HEL", "KEF"],
       "start_date": "2027-10-01",
       "end_date": "2027-10-16"
     },
     {
       "name": "Europe to Seattle",
-      "origins": ["FCO", "NAP", "MXP", "DUB", "LHR", "CDG", "HEL", "KEF"],
+      "origins": ["FCO", "DUB", "LHR", "CDG", "HEL", "KEF"],
       "destinations": ["SEA", "YVR", "PDX"],
       "start_date": "2027-10-10",
       "end_date": "2027-10-28"

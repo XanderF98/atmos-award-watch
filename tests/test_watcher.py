@@ -6,12 +6,13 @@ import pytest
 
 import seats_aero
 import watcher
+from conftest import CONFIG_PATH
 
 
 def run(monkeypatch, tmp_path):
     monkeypatch.setattr(
         sys, "argv",
-        ["watcher.py", "--data-dir", str(tmp_path), "--alert-file", str(tmp_path / "alert.md")],
+        ["watcher.py", "--config", str(CONFIG_PATH), "--data-dir", str(tmp_path), "--alert-file", str(tmp_path / "alert.md")],
     )
     return watcher.main()
 
@@ -71,7 +72,7 @@ def test_run_fails_loudly_when_the_api_rejects_the_key(api, monkeypatch, tmp_pat
 
 
 def test_check_routes_reports_untracked_pairs(api, monkeypatch, capsys):
-    monkeypatch.setattr(sys, "argv", ["watcher.py", "--check-routes"])
+    monkeypatch.setattr(sys, "argv", ["watcher.py", "--config", str(CONFIG_PATH), "--check-routes"])
     assert watcher.main() == 0
     out = capsys.readouterr().out
     assert "SEA-MXP: tracked (4 days of data" in out

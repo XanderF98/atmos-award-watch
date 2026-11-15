@@ -12,9 +12,13 @@ sys.path.insert(0, str(Path(__file__).parent))
 import stub_api  # noqa: E402
 
 
+# Tests use a frozen copy of the watchlist, so editing the real one never breaks them.
+CONFIG_PATH = ROOT / "tests" / "fixtures" / "watchlist.json"
+
+
 @pytest.fixture()
 def config():
-    return json.loads((ROOT / "watchlist.json").read_text())
+    return json.loads(CONFIG_PATH.read_text())
 
 
 @pytest.fixture()
