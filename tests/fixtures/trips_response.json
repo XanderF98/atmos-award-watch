@@ -1,0 +1,43 @@
+{
+ "data": [
+  {
+   "ID": "trip1",
+   "AvailabilityID": "avail001",
+   "FlightNumbers": "AA 2401, AA 198",
+   "Stops": 1,
+   "Carriers": "AA",
+   "RemainingSeats": 2,
+   "MileageCost": 70000,
+   "TotalTaxes": 5600,
+   "TaxesCurrency": "USD",
+   "TotalDuration": 905,
+   "DepartsAt": "2027-10-02T07:10:00Z",
+   "ArrivesAt": "2027-10-03T08:15:00Z",
+   "Cabin": "business",
+   "Source": "alaska"
+  },
+  {
+   "ID": "trip2",
+   "AvailabilityID": "avail001",
+   "FlightNumbers": "AA 2401, AA 198",
+   "Stops": 1,
+   "Carriers": "AA",
+   "RemainingSeats": 4,
+   "MileageCost": 35000,
+   "TotalTaxes": 5600,
+   "TaxesCurrency": "USD",
+   "TotalDuration": 905,
+   "DepartsAt": "2027-10-02T07:10:00Z",
+   "ArrivesAt": "2027-10-03T08:15:00Z",
+   "Cabin": "economy",
+   "Source": "alaska"
+  }
+ ],
+ "booking_links": [
+  {
+   "label": "Book via Alaska",
+   "link": "https://www.alaskaair.com/",
+   "primary": true
+  }
+ ]
+}

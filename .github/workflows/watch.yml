@@ -1,0 +1,41 @@
+name: Daily award check
+
+on:
+  schedule:
+    - cron: "17 14 * * *"   # every day at 14:17 UTC (early morning Pacific)
+  workflow_dispatch:         # lets you run it by hand from the Actions tab
+
+permissions:
+  contents: write   # save results under data/
+  issues: write     # open an issue when new deals appear
+
+concurrency:
+  group: award-check
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check award space
+        id: check
+        env:
+          SEATS_AERO_API_KEY: ${{ secrets.SEATS_AERO_API_KEY }}
+        run: python3 watcher.py --alert-file alert.md
+
+      - name: Save results
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data
+          git diff --cached --quiet || git commit -m "Award check $(date -u +%F)"
+          git push
+
+      - name: Open an issue for new deals
+        if: steps.check.outputs.new_deals != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TITLE: ${{ steps.check.outputs.title }}
+        run: gh issue create --title "$TITLE" --body-file alert.md

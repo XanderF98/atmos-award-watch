@@ -1,0 +1,30 @@
+{
+  "program": "alaska",
+  "passengers": 2,
+  "max_miles": {
+    "first": 90000,
+    "business": 70000,
+    "premium": 50000,
+    "economy": 30000
+  },
+  "max_taxes_usd": 350,
+  "backup_airport_min_savings": 20000,
+  "watches": [
+    {
+      "name": "Seattle to Milan",
+      "origins": ["SEA", "YVR", "PDX"],
+      "destinations": ["MXP", "LIN"],
+      "backup_airports": ["YVR", "PDX"],
+      "start_date": "2027-10-01",
+      "end_date": "2027-10-16"
+    },
+    {
+      "name": "Naples or Rome to Seattle",
+      "origins": ["NAP", "FCO"],
+      "destinations": ["SEA", "YVR", "PDX"],
+      "backup_airports": ["YVR", "PDX"],
+      "start_date": "2027-10-10",
+      "end_date": "2027-10-28"
+    }
+  ]
+}
