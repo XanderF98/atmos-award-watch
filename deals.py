@@ -5,8 +5,6 @@ That keeps the rules easy to test and lets the scheduled job and the MCP
 server share them.
 """
 
-from datetime import date
-
 # seats.aero prefixes each cabin's fields with a letter, e.g. JMileageCost.
 CABIN_PREFIX = {"economy": "Y", "premium": "W", "business": "J", "first": "F"}
 CABIN_ORDER = ["first", "business", "premium", "economy"]
@@ -82,8 +80,6 @@ def find_deals(options: list[dict], watch: dict, settings: dict) -> list[dict]:
     limits = settings.get("max_miles", {})
     passengers = settings.get("passengers", 1)
     max_taxes = settings.get("max_taxes_usd")
-    margin = settings.get("backup_airport_min_savings", 0)
-    backups = set(watch.get("backup_airports") or [])
 
     def passes(option: dict) -> bool:
         limit = limits.get(option["cabin"])
@@ -97,25 +93,38 @@ def find_deals(options: list[dict], watch: dict, settings: dict) -> list[dict]:
                 return False
         return True
 
+    good = [o for o in options if passes(o)]
+    return sort_options(prefer_main_airports(good, watch, settings))
+
+
+def prefer_main_airports(options: list[dict], watch: dict, settings: dict) -> list[dict]:
+    """Drop backup-airport options that don't earn the extra travel.
+
+    A backup-airport option stays only if no main-airport option exists in the
+    same cabin, or it is cheaper than the best one by the configured margin.
+    Kept backup options are marked with backup_airport=True.
+    """
+    margin = settings.get("backup_airport_min_savings", 0)
+    backups = set(watch.get("backup_airports") or [])
+
     def is_backup(option: dict) -> bool:
         return option["origin"] in backups or option["destination"] in backups
 
-    good = [o for o in options if passes(o)]
     best_main: dict[str, int] = {}
-    for option in good:
+    for option in options:
         if not is_backup(option):
             cabin = option["cabin"]
             best_main[cabin] = min(option["miles"], best_main.get(cabin, option["miles"]))
 
-    deals = []
-    for option in good:
+    kept = []
+    for option in options:
         if is_backup(option):
             main = best_main.get(option["cabin"])
             if main is not None and main - option["miles"] < margin:
                 continue  # not enough cheaper to be worth leaving the main airport
             option = {**option, "backup_airport": True}
-        deals.append(option)
-    return sort_options(deals)
+        kept.append(option)
+    return kept
 
 
 def cabin_summary(options: list[dict]) -> dict[str, dict]:
@@ -133,6 +142,17 @@ def cabin_summary(options: list[dict]) -> dict[str, dict]:
             "days_available": len({o["date"] for o in in_cabin}),
         }
     return summary
+
+
+def headline(deals: list[dict], limits: dict[str, int]) -> dict:
+    """The deal to lead an alert with: the one furthest under its cabin's points limit.
+
+    On a tie the nicer cabin wins, so business at its limit leads economy at its limit.
+    """
+    return min(
+        deals,
+        key=lambda d: (d["miles"] / limits.get(d["cabin"], d["miles"]), CABIN_ORDER.index(d["cabin"])),
+    )
 
 
 def deal_key(option: dict) -> str:
@@ -233,30 +253,6 @@ def alert_markdown(new_by_watch: dict[str, list[dict]], settings: dict, details:
     lines += [
         "---",
         "This comes from seats.aero's cached data, so a seat can be gone by the time you look. "
-        "Confirm on alaskaair.com before planning around it.",
+        "Confirm on alaskaair.com before planning around it. Award data from [seats.aero](https://seats.aero).",
     ]
     return "\n".join(lines)
-
-
-def summary_markdown(snapshot: dict) -> str:
-    """A short report of the whole run, for the job summary and the terminal."""
-    lines = [f"Award check for {snapshot['generated_at'][:10]} ({snapshot['program']})", ""]
-    for watch in snapshot["watches"]:
-        lines.append(
-            f"## {watch['name']} ({watch['start_date']} to {watch['end_date']})"
-        )
-        if not watch["cabins"]:
-            lines += ["No award space found yet for these dates.", ""]
-            continue
-        lines += ["", "| Cabin | Cheapest points | On | Route | Days with space |", "|---|---|---|---|---|"]
-        for cabin, s in watch["cabins"].items():
-            lines.append(
-                f"| {cabin.title()} | {s['cheapest_miles']:,} | {s['cheapest_date']} "
-                f"| {s['cheapest_route']} | {s['days_available']} |"
-            )
-        lines += ["", f"Deals meeting the rules: {len(watch['deals'])}", ""]
-    return "\n".join(lines)
-
-
-def days_until(day: str, today: date | None = None) -> int:
-    return (date.fromisoformat(day) - (today or date.today())).days

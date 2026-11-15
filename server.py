@@ -11,8 +11,10 @@ Requires:      pip install "mcp>=2"
 
 Environment:
   SEATS_AERO_API_KEY     seats.aero Pro API key (needed for the two live tools)
-  MCP_API_KEY            if set, callers must send it in an X-API-Key header
-  DATA_BASE_URL          where to read data/ and watchlist.json from; unset = local files
+  MCP_API_KEY            callers must send it in an X-API-Key header. Without it the
+                         server only listens on this computer (127.0.0.1)
+  DATA_BASE_URL          where to read the saved results from; unset = local data/ folder
+  DATA_TOKEN             GitHub token for DATA_BASE_URL when the results live in a private repo
   LIVE_CALL_DAILY_LIMIT  cap on seats.aero calls this server makes per day (default 50)
 """
 
@@ -34,6 +36,7 @@ import seats_aero
 
 ROOT = Path(__file__).parent
 DATA_BASE_URL = os.environ.get("DATA_BASE_URL", "").rstrip("/")
+DATA_TOKEN = os.environ.get("DATA_TOKEN", "").strip()
 LIVE_CALL_DAILY_LIMIT = int(os.environ.get("LIVE_CALL_DAILY_LIMIT", "50"))
 
 mcp = MCPServer(
@@ -41,8 +44,8 @@ mcp = MCPServer(
     instructions=(
         "Award flight availability for Alaska Atmos Rewards points. Points prices are per "
         "person, one way. Data comes from seats.aero's cache, so always tell the user to "
-        "confirm on alaskaair.com before booking. Prefer get_current_deals and "
-        "get_price_history, which are free; search_awards and get_flight_details each "
+        "confirm on alaskaair.com before booking. Prefer get_trip_options, get_current_deals "
+        "and get_price_history, which are free; search_awards and get_flight_details each "
         "spend one call from a limited daily quota."
     ),
 )
@@ -62,21 +65,26 @@ def cached(key: str, ttl_seconds: int, load):
     return value
 
 
-def read_text(relative_path: str) -> str | None:
-    """Read a repo file: from DATA_BASE_URL when hosted, else from disk. None if missing."""
+def read_data(name: str) -> str | None:
+    """Read a saved result file: from DATA_BASE_URL when set, else data/ on disk. None if missing."""
     def load():
         try:
             if DATA_BASE_URL:
-                request = urllib.request.Request(
-                    f"{DATA_BASE_URL}/{relative_path}", headers={"User-Agent": "atmos-award-watch"}
-                )
+                headers = {"User-Agent": "atmos-award-watch"}
+                if DATA_TOKEN:
+                    headers["Authorization"] = f"token {DATA_TOKEN}"
+                request = urllib.request.Request(f"{DATA_BASE_URL}/{name}", headers=headers)
                 with urllib.request.urlopen(request, timeout=20) as response:
                     return response.read().decode()
-            return (ROOT / relative_path).read_text()
+            return (ROOT / "data" / name).read_text()
         except (OSError, ValueError):
             return None
 
-    return cached(f"file:{relative_path}", 600, load)
+    return cached(f"file:{name}", 600, load)
+
+
+def load_watchlist() -> dict:
+    return json.loads((ROOT / "watchlist.json").read_text())
 
 
 def spend_live_call() -> str | None:
@@ -103,14 +111,13 @@ def airports(value: str) -> list[str] | None:
 @mcp.tool()
 def get_watchlist() -> dict:
     """The routes and dates being watched every day, and the rules that decide what counts as a deal (points limit per cabin, number of travelers, taxes cap, backup airports)."""
-    text = read_text("watchlist.json")
-    return json.loads(text) if text else {"error": "watchlist.json was not found."}
+    return load_watchlist()
 
 
 @mcp.tool()
 def get_current_deals(cabin: str | None = None) -> dict:
     """Award flights from the latest daily check that meet the watchlist rules, cheapest first, plus the cheapest price seen in each cabin. Optional cabin: economy, premium, business or first. Free to call; use this first for questions about the watched trip."""
-    text = read_text("data/latest.json")
+    text = read_data("latest.json")
     if not text:
         return {"error": "No results yet. The daily check has not run."}
     snapshot = json.loads(text)
@@ -128,9 +135,25 @@ def get_current_deals(cabin: str | None = None) -> dict:
 
 
 @mcp.tool()
+def get_trip_options() -> dict:
+    """Whether the whole trip can be booked: the cheapest way out paired with a way back for each cabin combination, total points for all travelers, and how far short of (or under) the points balance each is. Also says which travel dates have opened for booking yet and whether the data source is returning anything for each route. Free to call; use this for 'can we afford the trip?' or 'how many more points do we need?'."""
+    text = read_data("latest.json")
+    if not text:
+        return {"error": "No results yet. The daily check has not run."}
+    snapshot = json.loads(text)
+    return {
+        "checked_at": snapshot["generated_at"],
+        "note": "Points are totals for all travelers, both directions. Cached data: confirm on alaskaair.com.",
+        "trips": snapshot.get("trips", []),
+        "dates_open_for_booking": {w["name"]: w["release"] for w in snapshot["watches"]},
+        "route_coverage_days_of_data": {w["name"]: w["coverage"] for w in snapshot["watches"]},
+    }
+
+
+@mcp.tool()
 def get_price_history(cabin: str | None = None, days: int = 30) -> dict:
     """How the cheapest points price for each watched route and cabin has changed over recent daily checks, with the lowest price seen so far. Use for questions like 'is this a good price?' or 'has business class gotten cheaper?'. Free to call."""
-    text = read_text("data/history.csv")
+    text = read_data("history.csv")
     if not text:
         return {"error": "No history yet. The daily check has not run."}
     rows = list(csv.DictReader(io.StringIO(text)))
@@ -228,7 +251,8 @@ def get_flight_details(availability_id: str, cabin: str = "business") -> dict:
         response = cached(key, 3600, lambda: seats_aero.trips(availability_id))
     except seats_aero.SeatsAeroError as error:
         return {"error": str(error)}
-    trip = deals.describe_trip(response, cabin.lower())
+    passengers = load_watchlist().get("passengers", 1)
+    trip = deals.describe_trip(response, cabin.lower(), passengers)
     return trip or {"error": f"No {cabin} flights found for that id. The space may be gone."}
 
 
@@ -256,11 +280,13 @@ def require_api_key(app, expected: str):
 if __name__ == "__main__":
     import uvicorn
 
-    # 0.0.0.0 so a hosting service can reach it; PORT is set by most hosts.
-    app = mcp.streamable_http_app(stateless_http=True, host="0.0.0.0")
     api_key = os.environ.get("MCP_API_KEY", "").strip()
+    # With a key, listen publicly so a hosting service can reach it. Without one,
+    # stay private to this computer: the results must not be open to everyone.
+    host = "0.0.0.0" if api_key else "127.0.0.1"
+    app = mcp.streamable_http_app(stateless_http=True, host=host)
     if api_key:
         app = require_api_key(app, api_key)
     else:
-        print("MCP_API_KEY is not set: anyone who can reach this server can call it.")
-    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", "8000")))
+        print("MCP_API_KEY is not set, so the server is only reachable from this computer.")
+    uvicorn.run(app, host=host, port=int(os.environ.get("PORT", "8000")))

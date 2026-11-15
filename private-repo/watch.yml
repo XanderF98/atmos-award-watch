@@ -1,3 +1,6 @@
+# Copy this file to .github/workflows/watch.yml in a PRIVATE repo of your own.
+# The private repo holds the results; the code is fetched from the public repo.
+
 name: Daily award check
 
 on:
@@ -6,7 +9,7 @@ on:
   workflow_dispatch:         # lets you run it by hand from the Actions tab
 
 permissions:
-  contents: write   # save results under data/
+  contents: write   # save results in this repo
   issues: write     # open an issue when new deals appear
 
 concurrency:
@@ -17,7 +20,14 @@ jobs:
   check:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: Check out this repo (results)
+        uses: actions/checkout@v4
+
+      - name: Check out the code
+        uses: actions/checkout@v4
+        with:
+          repository: XanderF98/atmos-award-watch
+          path: code
 
       - name: Check award space
         id: check
@@ -29,13 +39,18 @@ jobs:
             echo "new_deals=0" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          python3 watcher.py --alert-file alert.md
+          # Use this repo's own watchlist.json if it has one, else the public example.
+          config=watchlist.json
+          [ -f "$config" ] || config=code/watchlist.json
+          python3 code/watcher.py --config "$config" --data-dir . --alert-file alert.md
 
       - name: Save results
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add data
+          for file in README.md chart.svg latest.json alerted.json history.csv trips.csv; do
+            [ -f "$file" ] && git add "$file"
+          done
           git diff --cached --quiet || git commit -m "Award check $(date -u +%F)"
           git push
 

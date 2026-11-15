@@ -41,10 +41,14 @@ def test_full_run_saves_results_and_alerts_once(api, monkeypatch, tmp_path):
 
     assert run(monkeypatch, tmp_path) == 0
     snapshot = json.loads((tmp_path / "latest.json").read_text())
-    assert [len(w["deals"]) for w in snapshot["watches"]] == [3, 3]
+    assert [len(w["deals"]) for w in snapshot["watches"]] == [4, 3]
     alert = (tmp_path / "alert.md").read_text()
     assert "YVR to MXP (backup airport)" in alert and "flights AA 2401, AA 198" in alert
-    assert "new_deals=6" in output.read_text()
+    assert alert.startswith("## The whole trip right now") and "24,000 short" in alert
+    assert "new_deals=7" in output.read_text()
+    assert "business YVR-MXP for 45,000 points" in output.read_text()  # headline, not just first class
+    assert "24,000 short" in (tmp_path / "README.md").read_text()
+    assert (tmp_path / "chart.svg").read_text().startswith("<svg")
 
     # Second run the same day: nothing new, no duplicate history rows.
     (tmp_path / "alert.md").unlink()
@@ -55,7 +59,7 @@ def test_full_run_saves_results_and_alerts_once(api, monkeypatch, tmp_path):
     with (tmp_path / "history.csv").open() as handle:
         history = list(csv.DictReader(handle))
     assert len(history) == 6  # 2 cabins outbound + 4 cabins return, once
-    assert {"watch": "Seattle to Milan", "cabin": "business", "cheapest_miles": "45000"}.items() <= history[0].items()
+    assert {"watch": "Seattle to Italy", "cabin": "business", "cheapest_miles": "45000"}.items() <= history[0].items()
 
 
 def test_run_fails_loudly_when_the_api_rejects_the_key(api, monkeypatch, tmp_path, capsys):
@@ -63,3 +67,11 @@ def test_run_fails_loudly_when_the_api_rejects_the_key(api, monkeypatch, tmp_pat
     assert run(monkeypatch, tmp_path) == 1
     assert "API key was rejected" in capsys.readouterr().err
     assert not (tmp_path / "latest.json").exists()
+
+
+def test_check_routes_reports_untracked_pairs(api, monkeypatch, capsys):
+    monkeypatch.setattr(sys, "argv", ["watcher.py", "--check-routes"])
+    assert watcher.main() == 0
+    out = capsys.readouterr().out
+    assert "SEA-MXP: tracked (4 days of data" in out
+    assert "SEA-FCO: NOT tracked" in out and "will never alert" in out

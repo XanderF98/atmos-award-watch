@@ -1,8 +1,9 @@
 """Small client for the seats.aero Partner API (cached award availability).
 
-Only the two read endpoints this project needs:
+Only the read endpoints this project needs:
   GET /search      availability summaries, one per route and day
   GET /trips/{id}  the individual flights behind one summary
+  GET /routes      which airport pairs are tracked for a program
 
 Docs: https://developers.seats.aero/reference
 Uses the standard library only, so the scheduled job needs no installs.
@@ -31,7 +32,7 @@ def _base_url() -> str:
     return os.environ.get("SEATS_AERO_BASE_URL", "https://seats.aero/partnerapi").rstrip("/")
 
 
-def _get(url: str) -> dict:
+def _get(url: str):
     key = os.environ.get("SEATS_AERO_API_KEY", "").strip()
     if not key:
         raise SeatsAeroError(
@@ -126,3 +127,13 @@ def trips(availability_id: str) -> dict:
     """The individual flights (with times, flight numbers, taxes) behind one availability ID."""
     safe_id = urllib.parse.quote(str(availability_id), safe="")
     return _get(f"{_base_url()}/trips/{safe_id}")
+
+
+def routes(program: str = "alaska") -> set[str]:
+    """Airport pairs seats.aero tracks for a program, as 'SEA-FCO' strings.
+
+    Some accounts are not allowed to call this; callers should handle SeatsAeroError.
+    """
+    response = _get(f"{_base_url()}/routes?{urllib.parse.urlencode({'source': program})}")
+    rows = response.get("data", []) if isinstance(response, dict) else response
+    return {f"{r.get('OriginAirport')}-{r.get('DestinationAirport')}" for r in rows}

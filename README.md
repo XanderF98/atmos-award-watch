@@ -1,139 +1,120 @@
 # Atmos Award Watch
 
-A daily watcher for award flights bookable with Alaska Atmos Rewards points, plus a Model Context Protocol (MCP) server so an AI agent can answer questions about what it has found.
+[![Tests](https://github.com/XanderF98/atmos-award-watch/actions/workflows/tests.yml/badge.svg)](https://github.com/XanderF98/atmos-award-watch/actions/workflows/tests.yml)
 
-I built it for a real trip: two people, Seattle to northern Italy and back from the south, in October 2027. Award seats open about 11 months ahead and the good ones go quickly, so I wanted something that checks every day and tells me only when a seat is worth acting on.
+A daily watcher for award flights bookable with Alaska Atmos Rewards points, and a Model Context Protocol (MCP) server so an AI agent can answer questions about what it finds.
+
+I built it for one trip: two of us, Seattle to Italy in October 2027, flying into the north and home from the south, on about 91,000 points. Most award tools answer "is there a cheap seat on this route?". The question I actually had was different:
+
+**Can we both get there and back, about ten days apart, and how many points are we short?**
+
+So the watcher pairs every way out with a way back, prices the whole trip for two, and compares it with our balance.
+
+![Sample chart: cheapest round trip over time against our points balance](sample/chart.svg)
+
+*Sample output from made-up data. [The full sample dashboard](sample/README.md) shows everything a daily run writes.*
+
+## What a daily run tells me
+
+- **Whether the trip is bookable.** The cheapest pairing for each cabin mix (economy both ways, business out and economy back, and so on), total points for two, and how far that is from our balance.
+- **Which dates exist yet.** Atmos opens award seats about 331 days ahead, so for weeks some of our dates simply can't be booked. The run says which are open and when the rest will be, so "no seats" is never confused with "not released".
+- **Whether the data covers our routes.** The data source mostly tracks airport pairs that have a nonstop flight. If a route returns nothing, the run says so instead of staying quiet forever.
+- **One-way deals.** Seats at or under my points limit per cabin, with enough seats for both of us.
+
+When a deal is new or gets cheaper, it opens a GitHub issue, which reaches me by email and phone.
 
 ## How it works
 
 ```
-GitHub Actions (daily)  --HTTPS-->  seats.aero API (cached award space)
-        |
-        |-- saves data/latest.json and data/history.csv to this repo
-        '-- opens a GitHub issue when a deal is new or its price dropped
+private results repo                         this public repo
+--------------------                         ----------------
+GitHub Actions (daily) -- runs --> watcher.py --HTTPS--> seats.aero API
+   |
+   |-- saves the dashboard, chart and price history (private)
+   '-- opens an issue when a deal is new or cheaper (private)
 
-Copilot Studio agent  --MCP (Streamable HTTP)-->  server.py  --> the saved data, or a live lookup
+my Copilot Studio agent --MCP--> server.py --> the saved results, or a live lookup
 ```
 
-1. Every morning a scheduled GitHub Actions job runs `watcher.py`.
-2. For each watch in `watchlist.json` it makes one API call covering every airport pair and date.
-3. `deals.py` applies the rules below and decides what counts as a deal.
-4. The job commits a snapshot and one history row per route and cabin, so the repo becomes the price history.
-5. If a deal is new, or got cheaper, the job opens an issue. GitHub then notifies me by email and on my phone.
+The code is public and the results are private. That split was not my first design. I started with one public repo that committed its findings every day. Then I read the data source's terms: API results for flights more than 60 days out can't be shown publicly. My whole trip is more than 60 days out. So the scheduled job now runs in a small private repo, the MCP server refuses to listen publicly without a key, and this repo only ever shows sample data.
 
-No server or database is needed for the alerts. The MCP server is optional and only adds the ability to ask questions.
+`private-repo/` has the workflow file and the five-minute setup for the private side.
 
 ## What counts as a deal
 
-All of these are set in `watchlist.json`. Points are per person, one way.
+All of this lives in `watchlist.json`. Points are per person, one way.
 
-| Rule | Setting | Default |
+| Rule | Setting | Mine |
 |---|---|---|
-| Points price at or under the limit for the cabin | `max_miles` | first 90,000, business 70,000, premium 50,000, economy 30,000 |
-| Enough seats for everyone, when the seat count is known | `passengers` | 2 |
-| Taxes and fees under a cap, when known and in US dollars | `max_taxes_usd` | 350 |
-| A backup airport only counts if it beats the main airport by a margin | `backup_airports`, `backup_airport_min_savings` | Vancouver and Portland must be 20,000 points cheaper than Seattle |
-
-The limits are starting points. After a week or two of history it is easy to see what normal prices look like and tighten them.
-
-Each watch is a one-way search, because awards price as one-ways and the trip flies into one city and home from another:
-
-```json
-{
-  "name": "Seattle to Milan",
-  "origins": ["SEA", "YVR", "PDX"],
-  "destinations": ["MXP", "LIN"],
-  "backup_airports": ["YVR", "PDX"],
-  "start_date": "2027-10-01",
-  "end_date": "2027-10-16"
-}
-```
+| Points at or under the limit for the cabin | `max_miles` | first 90,000, business 70,000, premium 50,000, economy 37,500 |
+| Enough seats for everyone, when the count is known | `passengers` | 2 |
+| Taxes under a cap, when known and in US dollars | `max_taxes_usd` | 350 |
+| A backup airport must beat the main one by a margin | `backup_airports`, `backup_airport_min_savings` | Vancouver or Portland must save 20,000 points over Seattle |
+| Trip length when pairing out and back | `trip.min_nights`, `trip.max_nights` | 8 to 12 nights |
+| Points we have | `points_balance` | 91,000 |
 
 ## MCP tools
 
-| Tool | What it returns | Cost |
+| Tool | What it answers | Cost |
 |---|---|---|
-| `get_watchlist` | The routes, dates and rules being watched | Free |
-| `get_current_deals` | Deals from the latest daily check, cheapest first | Free |
-| `get_price_history` | How the cheapest price per route and cabin has moved, and the lowest seen | Free |
-| `search_awards` | A live lookup for any route and date range | 1 API call |
-| `get_flight_details` | Flight numbers, times, taxes and a booking link for one option | 1 API call |
+| `get_trip_options` | Can we book the whole trip, and how many points are we short? | Free |
+| `get_current_deals` | What one-way deals did the latest check find? | Free |
+| `get_price_history` | Is this a good price compared with recent checks? | Free |
+| `get_watchlist` | What is being watched, and under what rules? | Free |
+| `search_awards` | What about a route or dates I'm not watching? | 1 API call |
+| `get_flight_details` | Which flights, when, and where do I book? | 1 API call |
 
-The tool descriptions tell the agent which tools are free and which spend quota, so it reaches for the saved data first.
+The descriptions tell the agent which tools are free and which spend quota, so it reads the saved results first.
 
-## Set it up
+## Try it
 
-You need a [seats.aero](https://seats.aero) Pro subscription for an API key. Pro keys are for personal use and allow 1,000 calls a day; this project uses about 2 to 7.
-
-1. Fork or copy this repo.
-2. Create a key at seats.aero and add it as a repository secret named `SEATS_AERO_API_KEY` (Settings, Secrets and variables, Actions).
-3. Edit `watchlist.json` for your own routes, dates and limits.
-4. In the Actions tab, open "Daily award check" and choose "Run workflow" to test it. After that it runs every day on its own.
-
-To get the alerts, watch the repo with notifications for issues turned on.
-
-### Pausing to save money
-
-The subscription is only needed while the job is running. Award seats open about 331 days before departure, so the months that matter most are when your dates first open and the last couple of months before the trip. To pause, cancel the subscription and delete the `SEATS_AERO_API_KEY` secret: the daily job then skips quietly, and the saved history stays in the repo. Add the secret back to resume.
-
-## Run it locally
-
-Requires Python 3.10 or newer. The watcher uses only the standard library.
+Requires Python 3.10 or newer. The watcher itself uses only the standard library.
 
 ```
-python watcher.py --demo          # sample data, no key needed, nothing saved
-python watcher.py                 # real run, needs SEATS_AERO_API_KEY
-python -m pytest                  # tests run against a local stand-in for the API
+python watcher.py --demo          # sample data, no key, prints the dashboard
+python -m pytest                  # 32 tests, run against a local stand-in for the API
 ```
 
-To run the MCP server:
+With a seats.aero Pro API key in `SEATS_AERO_API_KEY`:
 
 ```
-pip install -r requirements.txt
-python server.py
+python watcher.py --check-routes  # run this first: is each of my routes covered?
+python watcher.py                 # a real check; results go to data/ (ignored by git)
+pip install -r requirements.txt && python server.py    # MCP endpoint at http://localhost:8000/mcp
 ```
 
-The MCP endpoint is `http://localhost:8000/mcp`.
-
-## Deploy the MCP server
-
-The server runs as a single web service. On Render:
-
-- Build command: `pip install -r requirements.txt`
-- Start command: `python server.py`
-- Environment variables:
+## Hosting the MCP server
 
 | Variable | Purpose |
 |---|---|
 | `SEATS_AERO_API_KEY` | Needed for the two live tools |
-| `MCP_API_KEY` | A long random string. When set, every request must send it in an `X-API-Key` header |
-| `DATA_BASE_URL` | `https://raw.githubusercontent.com/<you>/atmos-award-watch/main`, so the server reads the results the daily job commits |
+| `MCP_API_KEY` | A long random string. Required for the server to listen publicly; callers send it in an `X-API-Key` header |
+| `DATA_BASE_URL` | Where the saved results live, e.g. `https://raw.githubusercontent.com/<you>/<private-repo>/main` |
+| `DATA_TOKEN` | A read-only GitHub token for that private repo |
 | `LIVE_CALL_DAILY_LIMIT` | Optional cap on live lookups per day (default 50) |
 
-## Connect it to a Copilot Studio agent
-
-1. In the agent, add a tool and choose Model Context Protocol.
-2. Enter the server's public URL ending in `/mcp`.
-3. For authentication choose API key, sent as a header named `X-API-Key`, and paste the value of `MCP_API_KEY`.
-4. Create the connection and add it to the agent. The five tools appear with their descriptions.
-5. Ask "Any business class deals to Milan?" in the test chat and confirm it reports using a tool.
+In Copilot Studio, add the server as a Model Context Protocol tool with API key authentication, sent as a header named `X-API-Key`.
 
 ## Design choices
 
-- **Scheduled job and agent are separate.** The alerts must work even if the agent or its host is down, so the job depends only on GitHub and the data source. The MCP server reads what the job saved.
-- **The repo is the database.** Committing a small snapshot each day gives a free, versioned price history with no storage to run.
-- **Alert once.** A deal alerts when it first appears or gets cheaper, not every day it still exists. A deal that disappears and comes back alerts again.
-- **Rules are plain, tested functions.** `deals.py` has no network or file access, so every rule has a test.
-- **Protect the quota.** The API key has a daily limit and belongs to one person. The server caches lookups, caps live calls per day, and can require its own key. The Sleeper server I built before this needed none of that because its data was public and unlimited.
-- **Filter twice.** The request asks for one mileage program and the code filters again, so a change in the API cannot let another program's prices trigger an alert.
+- **Answer the trip question.** One-way deals are an ingredient. `trip.py` turns them into the thing I need to decide: a pairing, a total and a gap.
+- **Make silence mean something.** A watcher that says nothing is indistinguishable from a broken one. Every run reports released dates and route coverage, so quiet has a reason.
+- **Results stay private, by default and by design.** Without `MCP_API_KEY` the server binds to this computer only.
+- **The scheduled job and the agent are separate.** Alerts depend only on GitHub and the data source. The agent is a way to ask questions, not a point of failure.
+- **Rules are plain, tested functions.** `deals.py` and `trip.py` have no network or file access, so each rule has a test.
+- **Protect the quota.** The API key allows 1,000 calls a day. A run uses about 2 to 7, and the server caches lookups and caps live calls.
+- **Alert once.** A deal alerts when it appears or gets cheaper, and again if it disappears and comes back.
 
 ## Limitations
 
-- **Cached data.** seats.aero's results can be hours old, so a seat can be gone by the time I look. The alert says so, and the airline's site is the final word.
-- **One program.** It watches Atmos Rewards only. Other programs are a one-line config change, but the limits would need rethinking.
-- **Not yet proven on live data.** I wrote and tested this against a stand-in for the API built from its published spec. The first real runs will show whether any field behaves differently, especially taxes, which I treat as cents.
-- **Points only.** Cash fares are not tracked. Google Flights price alerts already do that well.
+- **Not yet proven on live data.** Everything is tested against a stand-in built from the published API spec. The first real runs will show what differs. I expect taxes (which I treat as cents) and route coverage to be the surprises.
+- **Coverage is not guaranteed.** Routes without a nonstop flight may not be tracked at all. `--check-routes` exists because of this.
+- **Cached data.** Results can be hours old, so a seat can be gone by the time I look. The airline's site is the final word.
+- **One program.** Atmos Rewards only.
+- **Points only.** Google Flights price alerts already cover cash fares.
 
-## A note on how this was built
+## Credits
 
-I built this as a learning project, with Claude as a coding assistant for the code and tests. I chose the scope and rules, and I run it for my own trip.
+Award availability comes from [seats.aero](https://seats.aero), used under its terms for personal, non-commercial projects. This project is not affiliated with seats.aero or Alaska Airlines.
+
+I built this as a learning project, with Claude as a coding assistant for the code and tests. The trip, the rules and the decisions are mine.

@@ -36,8 +36,8 @@ def test_deal_rules(rows, config):
     watch = outbound(config)
     found = keys(deals.find_deals(alaska_options(rows, watch), watch, config))
     assert ("SEA", "2027-10-02", "business", 70000) in found   # at the limit, 2 seats
-    assert ("SEA", "2027-10-03", "economy", 27500) in found    # under the economy limit
-    assert ("SEA", "2027-10-02", "economy", 35000) not in found  # over the economy limit
+    assert ("SEA", "2027-10-03", "economy", 27500) in found    # well under the economy limit
+    assert ("SEA", "2027-10-02", "economy", 35000) in found    # under the economy limit
     assert ("SEA", "2027-10-03", "business", 110000) not in found  # too many points
     assert ("SEA", "2027-10-05", "business", 70000) not in found  # only 1 seat for 2 people
     assert ("SEA", "2027-10-06", "business", 70000) not in found  # $610 taxes is over the cap
@@ -69,7 +69,7 @@ def test_alerts_only_for_new_or_cheaper_deals(rows, config):
     found = deals.find_deals(alaska_options(rows, watch), watch, config)
 
     new, record = deals.split_new(found, {})
-    assert len(new) == len(found) == 3
+    assert len(new) == len(found) == 4
 
     new, record = deals.split_new(found, record)
     assert new == []  # same deals the next day: no repeat alert
@@ -80,7 +80,7 @@ def test_alerts_only_for_new_or_cheaper_deals(rows, config):
 
     new, record = deals.split_new(found[:1], record)
     new, _ = deals.split_new(found, record)
-    assert len(new) == 2  # deals that vanished and came back alert again
+    assert len(new) == 3  # deals that vanished and came back alert again
 
 
 def test_cabin_summary(rows, config):

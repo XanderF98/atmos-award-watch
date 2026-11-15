@@ -44,6 +44,9 @@ class Handler(BaseHTTPRequestHandler):
                 200,
                 {"data": page, "count": len(page), "hasMore": skip + PAGE_SIZE < len(rows), "cursor": 1},
             )
+        if url.path == "/partnerapi/routes":
+            rows = json.loads((FIXTURES / "search_response.json").read_text())["data"]
+            return self._send(200, [r["Route"] for r in rows if r["Source"] == query["source"][0]])
         if url.path.startswith("/partnerapi/trips/"):
             return self._send(200, json.loads((FIXTURES / "trips_response.json").read_text()))
         self._send(404, {})
